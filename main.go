@@ -4,29 +4,56 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"gm-emulator/crypto"
 	"gm-emulator/gms"
 	"gm-emulator/handlers"
+	"gm-emulator/system"
 	"net"
+	"net/http"
+	"os"
+	"time"
 )
 
 type PacketHandler func([]byte)
 
-// Register handlers in a map
+// create a global jcrypto object
+var jcrypto *crypto.JCrypto
+
 var handlersMap = map[byte]PacketHandler{
 	gms.MSG_SYSTEM_TIME_RES_NUM: handlers.HandleSystemTimeRes,
 	// Add more handlers here...
 }
 
 func main() {
-	// Connect to the server
-	conn, err := net.Dial("tcp", "51.222.8.230:9998")
+	conn, err := connectToServer("51.222.8.230:9998")
+	system.GlobalSystem.DSConnection = conn
 	if err != nil {
 		fmt.Println("Error connecting:", err)
 		return
 	}
 	defer conn.Close()
 
-	// Create a Data struct
+	jcrypto = crypto.NewJCrypto(4096)
+	err2 := jcrypto.Init("D:\\Dev\\NewDawn9D\\Go-GMEmulator\\lump.dat")
+	if err2 != nil {
+		fmt.Printf("Warning: Could not load key file: %v\n", err)
+		os.Exit(1)
+	}
+
+	go startWebServer()
+	go receiveLoop(conn)
+
+	sendSystemTimeReq(conn)
+
+	// Block main forever (or use a better mechanism)
+	select {}
+}
+
+func connectToServer(addr string) (net.Conn, error) {
+	return net.Dial("tcp", addr)
+}
+
+func sendSystemTimeReq(conn net.Conn) {
 	data := gms.MSG_SYSTEM_TIME_REQ{
 		Header: gms.GmsHeader{
 			IKey:     gms.MSG_KEY,
@@ -36,33 +63,24 @@ func main() {
 		},
 	}
 
-	// Serialize the struct first to get its size
 	structBuf := new(bytes.Buffer)
-	err = binary.Write(structBuf, binary.LittleEndian, data)
+	err := binary.Write(structBuf, binary.LittleEndian, data)
 	if err != nil {
 		fmt.Println("binary.Write failed:", err)
 		return
 	}
 
-	// Create final buffer with length prefix
 	buf := new(bytes.Buffer)
-	// Write length prefix (16 00 = 22 in little endian)
 	err = binary.Write(buf, binary.LittleEndian, uint16(22))
 	if err != nil {
 		fmt.Println("Failed to write length prefix:", err)
 		return
 	}
-	// Write the struct data
 	buf.Write(structBuf.Bytes())
-	if err != nil {
-		fmt.Println("binary.Write failed:", err)
-		return
-	}
 
 	fmt.Printf("Serialized data length: %d\n", len(buf.Bytes()))
 	fmt.Println("Serialized data:", buf.Bytes())
 
-	// Send the serialized data
 	_, err = conn.Write(buf.Bytes())
 	if err != nil {
 		fmt.Println("Error sending data:", err)
@@ -70,15 +88,15 @@ func main() {
 	}
 
 	fmt.Println("Data sent successfully!")
+}
 
-	// Buffer management variables (simulate the C++ logic)
+func receiveLoop(conn net.Conn) {
 	const MAX_OF_RECV_BUFFER = 4096
 	recvBuffer := make([]byte, MAX_OF_RECV_BUFFER)
 	curStartPos := 0
 	curEndPos := 0
 
 	for {
-		// Read data into buffer
 		n, err := conn.Read(recvBuffer[curEndPos:])
 		if err != nil {
 			fmt.Println("Error reading response:", err)
@@ -86,7 +104,6 @@ func main() {
 		}
 		curEndPos += n
 
-		// Try to extract packets as long as possible
 		for {
 			if curStartPos < curEndPos-2 {
 				packetLen := binary.LittleEndian.Uint16(recvBuffer[curStartPos : curStartPos+2])
@@ -98,7 +115,6 @@ func main() {
 					packet := recvBuffer[curStartPos+2 : curStartPos+2+int(packetLen)]
 					curStartPos += int(packetLen) + 2
 
-					// Parse MSG_KEY and CMessage
 					if len(packet) >= 5 {
 						msgKey := int(binary.LittleEndian.Uint32(packet[0:4]))
 						if msgKey == gms.MSG_KEY {
@@ -115,9 +131,7 @@ func main() {
 						fmt.Println("Packet too short to parse MSG_KEY and CMessage")
 					}
 					fmt.Println("Packet received:", packet)
-					// Continue to check for more packets in buffer
 				} else {
-					// Not enough data for a full packet, move remaining data to start
 					if curStartPos != 0 {
 						copy(recvBuffer[0:], recvBuffer[curStartPos:curEndPos])
 						curEndPos -= curStartPos
@@ -126,11 +140,99 @@ func main() {
 							recvBuffer[i] = 0
 						}
 					}
-					break // Wait for more data
+					break
 				}
 			} else {
-				break // Not enough data to determine packet length
+				break
 			}
 		}
 	}
+}
+
+func startWebServer() {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		msg := gms.MSG_GM_EDIT_LEVEL{
+			Header: gms.GmsHeader{
+				IKey:     gms.MSG_KEY,
+				CMessage: gms.MSG_GM_EDIT_LEVEL_NUM,
+			},
+			ILevel: 52,
+			// CCharacName:	[]byte("firefox"),
+		}
+		copy(msg.CCharacName[:], []byte("FirefoxTest"))
+
+		ret := Send(msg, int(binary.Size(msg)))
+		if ret == 0 {
+			fmt.Fprintf(w, "Message sent successfully!")
+		} else {
+			fmt.Fprintf(w, "Failed to send message.")
+		}
+	})
+	http.ListenAndServe(":8080", nil)
+}
+
+func Send(msg interface{}, size int) int {
+
+	if system.GlobalSystem == nil {
+		fmt.Println("Time gap not set or GlobalSystem is nil, cannot send message")
+		return -1
+	}
+
+	structBuf := new(bytes.Buffer)
+	err := binary.Write(structBuf, binary.LittleEndian, msg)
+	if err != nil {
+		fmt.Println("binary.Write failed:", err)
+		return -1
+	}
+	buffer := structBuf.Bytes()
+	if len(buffer) < binary.Size(gms.GmsHeader{}) {
+		fmt.Println("Buffer too small for header")
+		return -1
+	}
+
+	// Read header from buffer
+	header := gms.GmsHeader{}
+	headerBuf := bytes.NewReader(buffer[:binary.Size(gms.GmsHeader{})])
+	err = binary.Read(headerBuf, binary.LittleEndian, &header)
+	if err != nil {
+		fmt.Println("binary.Read failed:", err)
+		return -1
+	}
+
+	now := time.Now().Unix()
+	header.UITime = uint32(now) + uint32(system.GlobalSystem.TimeGapBetweenDS)
+	copy(header.CGMName[:], []byte("firefox"))
+
+	// Write updated header back to buffer
+	headerBufOut := new(bytes.Buffer)
+	err = binary.Write(headerBufOut, binary.LittleEndian, &header)
+	if err != nil {
+		fmt.Println("binary.Write failed:", err)
+		return -1
+	}
+	copy(buffer[:binary.Size(gms.GmsHeader{})], headerBufOut.Bytes())
+
+	// Prepend 2-byte length prefix (size)
+	finalBuf := new(bytes.Buffer)
+	err = binary.Write(finalBuf, binary.LittleEndian, uint16(size))
+	if err != nil {
+		fmt.Println("Failed to write length prefix:", err)
+		return -1
+	}
+	finalBuf.Write(buffer[:size])
+
+	if header.CMessage != 0 {
+		jcrypto.Encryption(finalBuf.Bytes()[2+9:], uint8(header.UITime%100))
+	}
+
+	fmt.Printf("sent at: time: %d, key: %d\n", header.UITime, header.UITime%100)
+
+	n, err := system.GlobalSystem.DSConnection.Write(finalBuf.Bytes())
+	fmt.Printf("len: %d\n", n)
+	fmt.Printf("buffer: %v\n", finalBuf.Bytes())
+	if err != nil {
+		fmt.Println("Error sending data:", err)
+		return -1
+	}
+	return 0
 }
