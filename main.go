@@ -4,8 +4,18 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"gm-emulator/gms"
+	"gm-emulator/handlers"
 	"net"
 )
+
+type PacketHandler func([]byte)
+
+// Register handlers in a map
+var handlersMap = map[byte]PacketHandler{
+	gms.MSG_SYSTEM_TIME_RES_NUM: handlers.HandleSystemTimeRes,
+	// Add more handlers here...
+}
 
 func main() {
 	// Connect to the server
@@ -17,10 +27,10 @@ func main() {
 	defer conn.Close()
 
 	// Create a Data struct
-	data := MSG_SYSTEM_TIME_REQ{
-		Header: GmsHeader{
-			IKey:     MSG_KEY,
-			CMessage: MSG_SYSTEM_TIME_REQ_NUM,
+	data := gms.MSG_SYSTEM_TIME_REQ{
+		Header: gms.GmsHeader{
+			IKey:     gms.MSG_KEY,
+			CMessage: gms.MSG_SYSTEM_TIME_REQ_NUM,
 			UITime:   0,
 			CGMName:  [13]byte{'f', 'i', 'r', 'e', 'f', 'o', 'x', 0, 0, 0, 0, 0, 0},
 		},
@@ -91,28 +101,15 @@ func main() {
 					// Parse MSG_KEY and CMessage
 					if len(packet) >= 5 {
 						msgKey := int(binary.LittleEndian.Uint32(packet[0:4]))
-						if msgKey == MSG_KEY {
+						if msgKey == gms.MSG_KEY {
 							cMessage := packet[4]
-							switch cMessage {
-							case MSG_SYSTEM_TIME_RES_NUM:
-								expectedSize := binary.Size(MSG_SYSTEM_TIME_RES{})
-								if len(packet) >= expectedSize {
-									var res MSG_SYSTEM_TIME_RES
-									buf := bytes.NewReader(packet)
-									err := binary.Read(buf, binary.LittleEndian, &res)
-									if err != nil {
-										fmt.Println("Failed to parse MSG_SYSTEM_TIME_RES:", err)
-										break
-									}
-									fmt.Printf("Received MSG_SYSTEM_TIME_RES: ServerIndex=%d, Time=%d\n", res.UServerIndex, res.UITime)
-								} else {
-									fmt.Printf("Packet too short: got %d bytes, expected at least %d bytes\n", len(packet), expectedSize)
-								}
-							default:
+							if handler, ok := handlersMap[cMessage]; ok {
+								handler(packet)
+							} else {
 								fmt.Printf("Unknown CMessage: %d\n", cMessage)
 							}
 						} else {
-							fmt.Printf("MSG_KEY mismatch: got %d, expected %d\n", msgKey, MSG_KEY)
+							fmt.Printf("MSG_KEY mismatch: got %d, expected %d\n", msgKey, gms.MSG_KEY)
 						}
 					} else {
 						fmt.Println("Packet too short to parse MSG_KEY and CMessage")

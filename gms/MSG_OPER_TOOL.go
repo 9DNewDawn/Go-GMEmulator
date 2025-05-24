@@ -1,4 +1,4 @@
-package main
+package gms
 
 type GmsHeader struct {
 	IKey     int32    // 4 bytes
