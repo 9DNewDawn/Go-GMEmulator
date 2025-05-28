@@ -29,8 +29,24 @@ type MSG_GM_EDIT_LEVEL struct {
 	ILevel      int32
 }
 
+type MSG_GM_EDIT_VITAL struct {
+	Header      GmsHeader
+	CCharacName [13]byte // UniqueUserID
+	SVital      int16
+	UIHP        uint32 // Current HP
+}
+
+type MSG_GM_EDIT_GMCLASS struct {
+	Header           GmsHeader
+	CCharacName      [13]byte // UniqueUserID
+	CClass           byte
+	IBlockingEndTime int32
+}
+
 const MSG_KEY = 1003
 const MSG_SYSTEM_TIME_REQ_NUM = 11
 const MSG_SYSTEM_TIME_RES_NUM = 12
 const MSG_GM_ADD_INVGOLD_NUM = 77
 const MSG_GM_EDIT_LEVEL_NUM = 61
+const MSG_GM_EDIT_VITAL_NUM = 62
+const MSG_GM_EDIT_GMCLASS_NUM = 70

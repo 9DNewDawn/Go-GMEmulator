@@ -25,70 +25,85 @@ var handlersMap = map[byte]PacketHandler{
 }
 
 func main() {
-	conn, err := connectToServer("51.222.8.230:9998")
-	system.GlobalSystem.DSConnection = conn
+	addr := "51.222.8.230:9998"
+	conn, err := connectToServer(addr)
 	if err != nil {
 		fmt.Println("Error connecting:", err)
 		return
 	}
+	system.GlobalSystem.DSConnection = conn
 	defer conn.Close()
 
 	jcrypto = crypto.NewJCrypto(4096)
 	err2 := jcrypto.Init("D:\\Dev\\NewDawn9D\\Go-GMEmulator\\lump.dat")
 	if err2 != nil {
-		fmt.Printf("Warning: Could not load key file: %v\n", err)
+		fmt.Printf("Warning: Could not load key file: %v\n", err2)
 		os.Exit(1)
 	}
 
 	go startWebServer()
 	go receiveLoop(conn)
 
-	sendSystemTimeReq(conn)
+	go func() {
+		sendSystemTimeReq(conn, addr)
+	}()
 
 	// Block main forever (or use a better mechanism)
 	select {}
+}
+
+func sendSystemTimeReq(conn net.Conn, addr string) {
+	for {
+		data := gms.MSG_SYSTEM_TIME_REQ{
+			Header: gms.GmsHeader{
+				IKey:     gms.MSG_KEY,
+				CMessage: gms.MSG_SYSTEM_TIME_REQ_NUM,
+				UITime:   0,
+				CGMName:  [13]byte{'f', 'i', 'r', 'e', 'f', 'o', 'x', 0, 0, 0, 0, 0, 0},
+			},
+		}
+
+		structBuf := new(bytes.Buffer)
+		err := binary.Write(structBuf, binary.LittleEndian, data)
+		if err != nil {
+			fmt.Println("binary.Write failed:", err)
+			time.Sleep(10 * time.Second)
+			continue
+		}
+
+		buf := new(bytes.Buffer)
+		err = binary.Write(buf, binary.LittleEndian, uint16(22))
+		if err != nil {
+			fmt.Println("Failed to write length prefix:", err)
+			time.Sleep(10 * time.Second)
+			continue
+		}
+		buf.Write(structBuf.Bytes())
+
+		_, err = conn.Write(buf.Bytes())
+		if err != nil {
+			fmt.Println("Error sending data:", err)
+			// Try to reconnect
+			newConn, connErr := connectToServer(addr)
+			if connErr != nil {
+				fmt.Println("Reconnection failed:", connErr)
+				time.Sleep(10 * time.Second)
+				continue
+			}
+			fmt.Println("Reconnected to server.")
+			conn = newConn
+			system.GlobalSystem.DSConnection = conn
+		}
+
+		time.Sleep(10 * time.Second)
+	}
 }
 
 func connectToServer(addr string) (net.Conn, error) {
 	return net.Dial("tcp", addr)
 }
 
-func sendSystemTimeReq(conn net.Conn) {
-	data := gms.MSG_SYSTEM_TIME_REQ{
-		Header: gms.GmsHeader{
-			IKey:     gms.MSG_KEY,
-			CMessage: gms.MSG_SYSTEM_TIME_REQ_NUM,
-			UITime:   0,
-			CGMName:  [13]byte{'f', 'i', 'r', 'e', 'f', 'o', 'x', 0, 0, 0, 0, 0, 0},
-		},
-	}
-
-	structBuf := new(bytes.Buffer)
-	err := binary.Write(structBuf, binary.LittleEndian, data)
-	if err != nil {
-		fmt.Println("binary.Write failed:", err)
-		return
-	}
-
-	buf := new(bytes.Buffer)
-	err = binary.Write(buf, binary.LittleEndian, uint16(22))
-	if err != nil {
-		fmt.Println("Failed to write length prefix:", err)
-		return
-	}
-	buf.Write(structBuf.Bytes())
-
-	fmt.Printf("Serialized data length: %d\n", len(buf.Bytes()))
-	fmt.Println("Serialized data:", buf.Bytes())
-
-	_, err = conn.Write(buf.Bytes())
-	if err != nil {
-		fmt.Println("Error sending data:", err)
-		return
-	}
-
-	fmt.Println("Data sent successfully!")
-}
+// Modified to handle errors and reconnect if needed
 
 func receiveLoop(conn net.Conn) {
 	const MAX_OF_RECV_BUFFER = 4096
@@ -156,8 +171,7 @@ func startWebServer() {
 				IKey:     gms.MSG_KEY,
 				CMessage: gms.MSG_GM_EDIT_LEVEL_NUM,
 			},
-			ILevel: 52,
-			// CCharacName:	[]byte("firefox"),
+			ILevel: 200,
 		}
 		copy(msg.CCharacName[:], []byte("FirefoxTest"))
 

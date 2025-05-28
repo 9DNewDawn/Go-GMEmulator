@@ -25,9 +25,6 @@ func HandleSystemTimeRes(packet []byte) {
 		now := time.Now().Unix()
 
 		system.GlobalSystem.SetTimeGapBetweenDS(res.UITime - uint32(now))
-		// print time gap
-		fmt.Printf("Time gap between DS and server: %d seconds\n", system.GlobalSystem.GetTimeGapBetweenDS())
-		// system.GlobalSystem.SetServerTime(res.UITime)
 
 	} else {
 		fmt.Printf("Packet too short: got %d bytes, expected at least %d bytes\n", len(packet), expectedSize)
