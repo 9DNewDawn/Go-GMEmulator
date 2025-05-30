@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	ApiRoutes "gm-emulator/api/domains/game/routes"
 	"gm-emulator/crypto"
 	"gm-emulator/gms"
 	"gm-emulator/handlers"
@@ -12,6 +13,9 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/go-chi/chi/v5"
+	_ "github.com/joho/godotenv/autoload"
 )
 
 type PacketHandler func([]byte)
@@ -145,7 +149,7 @@ func receiveLoop(conn net.Conn) {
 					} else {
 						fmt.Println("Packet too short to parse MSG_KEY and CMessage")
 					}
-					fmt.Println("Packet received:", packet)
+					// fmt.Println("Packet received:", packet)
 				} else {
 					if curStartPos != 0 {
 						copy(recvBuffer[0:], recvBuffer[curStartPos:curEndPos])
@@ -165,24 +169,35 @@ func receiveLoop(conn net.Conn) {
 }
 
 func startWebServer() {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		msg := gms.MSG_GM_EDIT_LEVEL{
-			Header: gms.GmsHeader{
-				IKey:     gms.MSG_KEY,
-				CMessage: gms.MSG_GM_EDIT_LEVEL_NUM,
-			},
-			ILevel: 200,
-		}
-		copy(msg.CCharacName[:], []byte("FirefoxTest"))
-
-		ret := Send(msg, int(binary.Size(msg)))
-		if ret == 0 {
-			fmt.Fprintf(w, "Message sent successfully!")
-		} else {
-			fmt.Fprintf(w, "Failed to send message.")
-		}
+	r := chi.NewRouter()
+	r.Route("/api", func(r chi.Router) {
+		ApiRoutes.GetGameRoutes(r)
 	})
-	http.ListenAndServe(":8080", nil)
+
+	chi.Walk(r, func(method string, route string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) error {
+		fmt.Printf("[%s]: '%s' has %d middlewares\n", method, route, len(middlewares))
+		return nil
+	})
+	// GetGameRoutes(r)
+	// http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	// 	msg := gms.MSG_GM_EDIT_LEVEL{
+	// 		Header: gms.GmsHeader{
+	// 			IKey:     gms.MSG_KEY,
+	// 			CMessage: gms.MSG_GM_EDIT_LEVEL_NUM,
+	// 		},
+	// 		ILevel: 200,
+	// 	}
+	// 	copy(msg.CCharacName[:], []byte("FirefoxTest"))
+
+	// 	ret := Send(msg, int(binary.Size(msg)))
+	// 	if ret == 0 {
+	// 		fmt.Fprintf(w, "Message sent successfully!")
+	// 	} else {
+	// 		fmt.Fprintf(w, "Failed to send message.")
+	// 	}
+	// })
+	fmt.Println("Starting web server on :3000")
+	http.ListenAndServe(":3000", r)
 }
 
 func Send(msg interface{}, size int) int {
