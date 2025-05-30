@@ -234,7 +234,6 @@ func Send(msg interface{}, size int) int {
 
 	now := time.Now().Unix()
 	header.UITime = uint32(now) + uint32(system.GlobalSystem.TimeGapBetweenDS)
-	copy(header.CGMName[:], []byte("firefox"))
 
 	// Write updated header back to buffer
 	headerBufOut := new(bytes.Buffer)

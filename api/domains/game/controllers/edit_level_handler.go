@@ -23,6 +23,12 @@ func EditLevelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// copy everything to the message
+	copy(editLevelMsg.CCharacName[:], []byte(editLevelMsgDto.CCharacName))
+	copy(editLevelMsg.Header.CGMName[:], []byte(editLevelMsgDto.CGMName))
+	editLevelMsg.Header.IKey = gms.MSG_KEY
+	editLevelMsg.Header.CMessage = gms.MSG_GM_EDIT_LEVEL_NUM
+
 	fmt.Fprintf(w, "Person: %+v", editLevelMsg)
 	// w.Header().Set("Content-Type", "application/json")
 	// w.WriteHeader(http.StatusOK)
