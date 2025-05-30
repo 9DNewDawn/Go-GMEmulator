@@ -2,25 +2,29 @@ package GameControllers
 
 import (
 	"encoding/json"
+	"fmt"
+	"gm-emulator/gms"
 	"net/http"
-
-	"github.com/go-chi/chi/v5"
 )
 
+type MSG_GM_EDIT_LEVEL_DTO struct {
+	CGMName     string
+	CCharacName string
+	ILevel      int32
+}
+
 func EditLevelHandler(w http.ResponseWriter, r *http.Request) {
+	var editLevelMsgDto MSG_GM_EDIT_LEVEL_DTO
+	var editLevelMsg gms.MSG_GM_EDIT_LEVEL
 	// Extract the level ID from the URL parameters
-	levelID := chi.URLParam(r, "levelID")
-
-	// For demonstration purposes, let's assume we are editing a level with the given ID
-	// In a real application, you would retrieve the level data from a database or other storage
-	// and apply the changes based on the request body.
-
-	// Here we just simulate a successful edit operation
-	response := map[string]string{
-		"message": "Level " + levelID + " edited successfully",
+	err := json.NewDecoder(r.Body).Decode(&editLevelMsgDto)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	fmt.Fprintf(w, "Person: %+v", editLevelMsg)
+	// w.Header().Set("Content-Type", "application/json")
+	// w.WriteHeader(http.StatusOK)
+	// json.NewEncoder(w).Encode(response)
 }

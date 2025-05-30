@@ -97,6 +97,9 @@ func sendSystemTimeReq(conn net.Conn, addr string) {
 			fmt.Println("Reconnected to server.")
 			conn = newConn
 			system.GlobalSystem.DSConnection = conn
+			// Restart the receive loop
+			go receiveLoop(conn)
+
 		}
 
 		time.Sleep(10 * time.Second)
@@ -149,7 +152,7 @@ func receiveLoop(conn net.Conn) {
 					} else {
 						fmt.Println("Packet too short to parse MSG_KEY and CMessage")
 					}
-					// fmt.Println("Packet received:", packet)
+					fmt.Println("Packet received:", packet)
 				} else {
 					if curStartPos != 0 {
 						copy(recvBuffer[0:], recvBuffer[curStartPos:curEndPos])
@@ -178,6 +181,7 @@ func startWebServer() {
 		fmt.Printf("[%s]: '%s' has %d middlewares\n", method, route, len(middlewares))
 		return nil
 	})
+
 	// GetGameRoutes(r)
 	// http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 	// 	msg := gms.MSG_GM_EDIT_LEVEL{

@@ -20,7 +20,7 @@ func HandleSystemTimeRes(packet []byte) {
 			fmt.Println("Failed to parse MSG_SYSTEM_TIME_RES:", err)
 			return
 		}
-		// fmt.Printf("Received MSG_SYSTEM_TIME_RES: ServerIndex=%d, Time=%d\n", res.UServerIndex, res.UITime)
+		fmt.Printf("Received MSG_SYSTEM_TIME_RES: ServerIndex=%d, Time=%d\n", res.UServerIndex, res.UITime)
 		// time now
 		now := time.Now().Unix()
 
