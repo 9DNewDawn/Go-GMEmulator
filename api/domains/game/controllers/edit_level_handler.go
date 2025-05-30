@@ -1,9 +1,11 @@
 package GameControllers
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"gm-emulator/gms"
+	"gm-emulator/network"
 	"net/http"
 )
 
@@ -28,8 +30,11 @@ func EditLevelHandler(w http.ResponseWriter, r *http.Request) {
 	copy(editLevelMsg.Header.CGMName[:], []byte(editLevelMsgDto.CGMName))
 	editLevelMsg.Header.IKey = gms.MSG_KEY
 	editLevelMsg.Header.CMessage = gms.MSG_GM_EDIT_LEVEL_NUM
+	editLevelMsg.ILevel = editLevelMsgDto.ILevel
 
 	fmt.Fprintf(w, "Person: %+v", editLevelMsg)
+
+	network.Send(&editLevelMsg, int(binary.Size(editLevelMsg)))
 	// w.Header().Set("Content-Type", "application/json")
 	// w.WriteHeader(http.StatusOK)
 	// json.NewEncoder(w).Encode(response)

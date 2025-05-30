@@ -43,6 +43,11 @@ type MSG_GM_EDIT_GMCLASS struct {
 	IBlockingEndTime int32
 }
 
+type MSG_INVEN_REQ struct {
+	Header      GmsHeader
+	CCharacName [13]byte
+}
+
 const MSG_KEY = 1003
 const MSG_SYSTEM_TIME_REQ_NUM = 11
 const MSG_SYSTEM_TIME_RES_NUM = 12
@@ -50,3 +55,5 @@ const MSG_GM_ADD_INVGOLD_NUM = 77
 const MSG_GM_EDIT_LEVEL_NUM = 61
 const MSG_GM_EDIT_VITAL_NUM = 62
 const MSG_GM_EDIT_GMCLASS_NUM = 70
+const MSG_INVEN_REQ_NUM = 46
+const MSG_INVEN_RES_NUM = 47
