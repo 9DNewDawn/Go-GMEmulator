@@ -26,7 +26,17 @@ func GetCharacterInventoryHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Connection not found", http.StatusInternalServerError)
 		return
 	}
+
 	network.Send(invReqMessage, int(binary.Size(invReqMessage)), conn)
 
-	
+	// read the response
+	response, err := network.Read(conn)
+	if err != nil {
+		http.Error(w, "Error reading response", http.StatusInternalServerError)
+		return
+	}
+
+	// process the response
+	// ...
+
 }
