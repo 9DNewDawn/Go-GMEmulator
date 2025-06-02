@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"gm-emulator/gms"
 	"gm-emulator/network"
+	"net"
 	"net/http"
 )
 
@@ -24,7 +25,12 @@ func EditLevelHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
+	ctx := r.Context()
+	conn, ok := ctx.Value("conn").(net.Conn)
+	if !ok || conn == nil {
+		http.Error(w, "Connection not found", http.StatusInternalServerError)
+		return
+	}
 	// copy everything to the message
 	copy(editLevelMsg.CCharacName[:], []byte(editLevelMsgDto.CCharacName))
 	copy(editLevelMsg.Header.CGMName[:], []byte(editLevelMsgDto.CGMName))
@@ -34,7 +40,7 @@ func EditLevelHandler(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Fprintf(w, "Person: %+v", editLevelMsg)
 
-	network.Send(&editLevelMsg, int(binary.Size(editLevelMsg)))
+	network.Send(&editLevelMsg, int(binary.Size(editLevelMsg)), conn)
 	// w.Header().Set("Content-Type", "application/json")
 	// w.WriteHeader(http.StatusOK)
 	// json.NewEncoder(w).Encode(response)

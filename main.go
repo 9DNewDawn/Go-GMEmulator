@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	ApiRoutes "gm-emulator/api/domains/game/routes"
@@ -27,7 +28,29 @@ var handlersMap = map[byte]PacketHandler{
 	// Add more handlers here...
 }
 
+func initializeConnectionPool() error {
+	const poolSize = 4
+	for i := 0; i < poolSize; i++ {
+		conn, err := connectToServer("51.222.8.230:9998")
+		if err != nil {
+			return fmt.Errorf("failed to create connection %d: %v", i, err)
+		}
+
+		// Add to pool
+		system.GlobalSystem.DSConnectionPool <- conn
+		fmt.Printf("Added connection %d to pool\n", i+1)
+	}
+	return nil
+}
+
 func main() {
+	// initialize the conneciton pool
+	err := initializeConnectionPool()
+	if err != nil {
+		fmt.Println("Error initializing connection pool:", err)
+		return
+	}
+
 	addr := "51.222.8.230:9998"
 	conn, err := connectToServer(addr)
 	if err != nil {
@@ -133,7 +156,7 @@ func receiveLoop(conn net.Conn) {
 							if handler, ok := handlersMap[cMessage]; ok {
 								fmt.Printf("Received packet with CMessage: %d\n", cMessage)
 								handler(packet)
-								// Put this packet into a global channel, which will be split into 
+								// Put this packet into a global channel, which will be split into
 
 							} else {
 								fmt.Printf("Unknown CMessage: %d\n", cMessage)
@@ -164,6 +187,8 @@ func receiveLoop(conn net.Conn) {
 
 func startWebServer() {
 	r := chi.NewRouter()
+
+	r.Use(ConnectionMiddleware)
 	r.Route("/api", func(r chi.Router) {
 		ApiRoutes.GetGameRoutes(r)
 	})
@@ -175,4 +200,33 @@ func startWebServer() {
 
 	fmt.Println("Starting web server on :3000")
 	http.ListenAndServe(":3000", r)
+}
+
+// Create a middleware that checks if we have a free connection in the system.GlobalSystem.DSConnectionPool. If it doesn't have one, it'll create a new one and add it to the pool.
+func ConnectionMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Printf("Current connection pool size: %d\n", len(system.GlobalSystem.DSConnectionPool))
+
+		var conn net.Conn
+		select {
+		case conn = <-system.GlobalSystem.DSConnectionPool:
+			fmt.Println("Got connection from pool")
+		default:
+			// No connection available - refuse request
+			fmt.Println("No connections available, refusing request")
+			http.Error(w, "No connections available", http.StatusServiceUnavailable)
+			return
+		}
+
+		// Pass connection in context
+		ctx := context.WithValue(r.Context(), "conn", conn)
+
+		// Return connection to pool after request
+		defer func() {
+			system.GlobalSystem.DSConnectionPool <- conn
+			fmt.Println("Returned connection to pool")
+		}()
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }

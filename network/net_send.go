@@ -7,13 +7,14 @@ import (
 	"gm-emulator/crypto"
 	"gm-emulator/gms"
 	"gm-emulator/system"
+	"net"
 	"os"
 	"time"
 )
 
 var jcrypto *crypto.JCrypto
 
-func Send(msg interface{}, size int) int {
+func Send(msg interface{}, size int, conn net.Conn) int {
 	// check if jcrypto is initialized
 	if jcrypto == nil {
 		fmt.Println("JCrypto not initialized, initializing now...")
@@ -76,7 +77,7 @@ func Send(msg interface{}, size int) int {
 		jcrypto.Encryption(finalBuf.Bytes()[2+9:], uint8(header.UITime%100))
 	}
 
-	_, err = system.GlobalSystem.DSConnection.Write(finalBuf.Bytes())
+	_, err = conn.Write(finalBuf.Bytes())
 	if err != nil {
 		fmt.Println("Error sending data:", err)
 		return -1

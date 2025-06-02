@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"gm-emulator/gms"
 	"gm-emulator/network"
+	"net"
 	"net/http"
 )
 
@@ -19,9 +20,13 @@ func GetCharacterInventoryHandler(w http.ResponseWriter, r *http.Request) {
 		CMessage: gms.MSG_INVEN_REQ_NUM, // Use the correct message ID
 	}
 
-	network.Send(invReqMessage, int(binary.Size(invReqMessage)))
+	ctx := r.Context()
+	conn, ok := ctx.Value("conn").(net.Conn)
+	if !ok || conn == nil {
+		http.Error(w, "Connection not found", http.StatusInternalServerError)
+		return
+	}
+	network.Send(invReqMessage, int(binary.Size(invReqMessage)), conn)
 
-    // sleep for 500ms here
-    // someValue <- readChannel
-    
+	
 }
