@@ -1,40 +1,41 @@
 package system
 
-import "net"
+import (
+	"net"
+	"sync"
+)
 
-var GlobalSystem = &System{
-	DSConnectionPool: make(chan net.Conn, 4),
+type ConnectionWithChannel struct {
+	Conn    net.Conn
+	Channel chan []byte
+	ID      int
 }
 
-type System struct {
-	ServerTime       uint32
-	TimeGapBetweenDS uint32
+type GlobalSystemType struct {
 	DSConnection     net.Conn
-	DSConnectionPool chan net.Conn // Channel pool for DSConnections
+	DSConnectionPool chan *ConnectionWithChannel
+	timeGapBetweenDS int64
+	timeGapMutex     sync.RWMutex
 }
 
-func (s *System) GetServerTime() uint32 {
-	return s.ServerTime
+var GlobalSystem = &GlobalSystemType{
+	DSConnectionPool: make(chan *ConnectionWithChannel, 4),
 }
 
-func (s *System) SetServerTime(time uint32) {
-	s.ServerTime = time
+func (gs *GlobalSystemType) SetTimeGapBetweenDS(gap uint32) {
+	gs.timeGapMutex.Lock()
+	defer gs.timeGapMutex.Unlock()
+	gs.timeGapBetweenDS = int64(gap)
 }
 
-func (s *System) GetTimeGapBetweenDS() uint32 {
-	return s.TimeGapBetweenDS
+func (gs *GlobalSystemType) GetTimeGapBetweenDS() int64 {
+	gs.timeGapMutex.RLock()
+	defer gs.timeGapMutex.RUnlock()
+	return gs.timeGapBetweenDS
 }
 
-func (s *System) SetTimeGapBetweenDS(time uint32) {
-	s.TimeGapBetweenDS = time
-}
-
-// Add a DSConnection to the pool
-func (s *System) AddDSConnection(conn net.Conn) {
-	s.DSConnectionPool <- conn
-}
-
-// Get a DSConnection from the pool
-func (s *System) GetDSConnection() net.Conn {
-	return <-s.DSConnectionPool
+func (gs *GlobalSystemType) GetTimeGapBetweenDSAsUint32() uint32 {
+	gs.timeGapMutex.RLock()
+	defer gs.timeGapMutex.RUnlock()
+	return uint32(gs.timeGapBetweenDS)
 }

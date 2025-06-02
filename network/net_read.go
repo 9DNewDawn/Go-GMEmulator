@@ -4,51 +4,46 @@ import (
 	"encoding/binary"
 	"fmt"
 	"gm-emulator/gms"
-	"net"
+	"time"
 )
 
-func Read(conn net.Conn) ([]byte, error) {
-	const MAX_OF_RECV_BUFFER = 32768
-	recvBuffer := make([]byte, MAX_OF_RECV_BUFFER)
-	curStartPos := 0
-	curEndPos := 0
-
-	n, err := conn.Read(recvBuffer[curEndPos:])
-	if err != nil {
-		return nil, fmt.Errorf("error reading response: %w", err)
+// ReadFromChannel reads a packet from the connection's dedicated channel
+func ReadFromChannel(channel chan []byte, timeout time.Duration) ([]byte, error) {
+	select {
+	case packet := <-channel:
+		return packet, nil
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("timeout waiting for packet")
 	}
-	curEndPos += n
+}
 
-	if curStartPos < curEndPos-2 {
-		packetLen := binary.LittleEndian.Uint16(recvBuffer[curStartPos : curStartPos+2])
-		if packetLen > MAX_OF_RECV_BUFFER {
-			return nil, fmt.Errorf("[RecvBuffer] Exception: Packet Length Overflow")
+// ReadSpecificFromChannel reads and waits for a specific CMessage type from the channel
+func ReadSpecificFromChannel(channel chan []byte, expectedCMessage byte, timeout time.Duration) ([]byte, error) {
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		remainingTime := time.Until(deadline)
+		if remainingTime <= 0 {
+			break
 		}
-		if curEndPos-curStartPos >= int(packetLen)+2 {
-			packet := make([]byte, packetLen)
-			copy(packet, recvBuffer[curStartPos+2:curStartPos+2+int(packetLen)])
 
+		select {
+		case packet := <-channel:
 			if len(packet) >= 5 {
 				msgKey := int(binary.LittleEndian.Uint32(packet[0:4]))
-				if msgKey == gms.MSG_KEY {
-					cMessage := packet[4]
-					if handler, ok := handlersMap[cMessage]; ok {
-						fmt.Printf("Received packet with CMessage: %d\n", cMessage)
-						handler(packet)
-						// Put this packet into a global channel, which will be split into
-					} else {
-						fmt.Printf("Unknown CMessage: %d\n", cMessage)
-					}
-				} else {
-					fmt.Printf("MSG_KEY mismatch: got %d, expected %d\n", msgKey, gms.MSG_KEY)
+				if msgKey != gms.MSG_KEY {
+					continue
 				}
-			} else {
-				fmt.Println("Packet too short to parse MSG_KEY and CMessage")
-			}
 
-			return packet, nil
+				cMessage := packet[4]
+				if cMessage == expectedCMessage {
+					return packet, nil
+				}
+			}
+		case <-time.After(remainingTime):
+			break
 		}
 	}
 
-	return nil, fmt.Errorf("not enough data for a full packet")
+	return nil, fmt.Errorf("timeout: did not receive expected CMessage %d within %v", expectedCMessage, timeout)
 }

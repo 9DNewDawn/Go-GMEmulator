@@ -6,12 +6,12 @@ import (
 	"encoding/binary"
 	"fmt"
 	ApiRoutes "gm-emulator/api/domains/game/routes"
-	"gm-emulator/crypto"
 	"gm-emulator/gms"
 	"gm-emulator/handlers"
 	"gm-emulator/system"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -20,13 +20,14 @@ import (
 
 type PacketHandler func([]byte)
 
-// create a global jcrypto object
-var jcrypto *crypto.JCrypto
-
 var handlersMap = map[byte]PacketHandler{
 	gms.MSG_SYSTEM_TIME_RES_NUM: handlers.HandleSystemTimeRes,
-	// Add more handlers here...
 }
+
+var (
+	connectionChannels = make(map[net.Conn]chan []byte)
+	channelsMutex      = sync.RWMutex{}
+)
 
 func initializeConnectionPool() error {
 	const poolSize = 4
@@ -36,15 +37,71 @@ func initializeConnectionPool() error {
 			return fmt.Errorf("failed to create connection %d: %v", i, err)
 		}
 
-		// Add to pool
-		system.GlobalSystem.DSConnectionPool <- conn
-		fmt.Printf("Added connection %d to pool\n", i+1)
+		packetChannel := make(chan []byte, 100)
+
+		channelsMutex.Lock()
+		connectionChannels[conn] = packetChannel
+		channelsMutex.Unlock()
+
+		go receiveLoopForConnection(conn, i+1)
+		go heartbeatLoopForConnection(conn, i+1)
+
+		connWithChannel := &system.ConnectionWithChannel{
+			Conn:    conn,
+			Channel: packetChannel,
+			ID:      i + 1,
+		}
+
+		system.GlobalSystem.DSConnectionPool <- connWithChannel
 	}
 	return nil
 }
 
+func heartbeatLoopForConnection(conn net.Conn, connID int) {
+	sendSingleSystemTimeReq(conn)
+
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			err := sendSingleSystemTimeReq(conn)
+			if err != nil {
+				return
+			}
+		}
+	}
+}
+
+func sendSingleSystemTimeReq(conn net.Conn) error {
+	data := gms.MSG_SYSTEM_TIME_REQ{
+		Header: gms.GmsHeader{
+			IKey:     gms.MSG_KEY,
+			CMessage: gms.MSG_SYSTEM_TIME_REQ_NUM,
+			UITime:   0,
+		},
+	}
+
+	copy(data.Header.CGMName[:], "Go-GMEmulator")
+	structBuf := new(bytes.Buffer)
+	err := binary.Write(structBuf, binary.LittleEndian, data)
+	if err != nil {
+		return err
+	}
+
+	buf := new(bytes.Buffer)
+	err = binary.Write(buf, binary.LittleEndian, uint16(22))
+	if err != nil {
+		return err
+	}
+	buf.Write(structBuf.Bytes())
+
+	_, err = conn.Write(buf.Bytes())
+	return err
+}
+
 func main() {
-	// initialize the conneciton pool
 	err := initializeConnectionPool()
 	if err != nil {
 		fmt.Println("Error initializing connection pool:", err)
@@ -62,13 +119,85 @@ func main() {
 
 	go startWebServer()
 	go receiveLoop(conn)
+	go sendSystemTimeReq(conn, addr)
 
-	go func() {
-		sendSystemTimeReq(conn, addr)
+	select {}
+}
+
+func receiveLoopForConnection(conn net.Conn, connID int) {
+	channelsMutex.RLock()
+	packetChannel, exists := connectionChannels[conn]
+	channelsMutex.RUnlock()
+
+	if !exists {
+		return
+	}
+
+	const MAX_OF_RECV_BUFFER = 32768
+	recvBuffer := make([]byte, MAX_OF_RECV_BUFFER)
+	curStartPos := 0
+	curEndPos := 0
+
+	defer func() {
+		channelsMutex.Lock()
+		delete(connectionChannels, conn)
+		close(packetChannel)
+		channelsMutex.Unlock()
 	}()
 
-	// Block main forever (or use a better mechanism)
-	select {}
+	for {
+		conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+
+		n, err := conn.Read(recvBuffer[curEndPos:])
+		if err != nil {
+			return
+		}
+
+		curEndPos += n
+
+		for {
+			if curStartPos < curEndPos-2 {
+				packetLen := binary.LittleEndian.Uint16(recvBuffer[curStartPos : curStartPos+2])
+				if packetLen > MAX_OF_RECV_BUFFER {
+					return
+				}
+				if curEndPos-curStartPos >= int(packetLen)+2 {
+					packet := make([]byte, packetLen)
+					copy(packet, recvBuffer[curStartPos+2:curStartPos+2+int(packetLen)])
+					curStartPos += int(packetLen) + 2
+
+					if len(packet) >= 5 {
+						msgKey := int(binary.LittleEndian.Uint32(packet[0:4]))
+						if msgKey == gms.MSG_KEY {
+							cMessage := packet[4]
+
+							if cMessage == gms.MSG_SYSTEM_TIME_RES_NUM {
+								handlers.HandleSystemTimeRes(packet)
+							} else {
+								select {
+								case packetChannel <- packet:
+								default:
+									// Channel full, drop packet
+								}
+							}
+						}
+					}
+				} else {
+					if curStartPos != 0 {
+						copy(recvBuffer[0:], recvBuffer[curStartPos:curEndPos])
+						curEndPos -= curStartPos
+						curStartPos = 0
+						for i := curEndPos; i < MAX_OF_RECV_BUFFER; i++ {
+							recvBuffer[i] = 0
+						}
+					}
+					break
+				}
+			} else {
+				break
+			}
+		}
+	}
 }
 
 func sendSystemTimeReq(conn net.Conn, addr string) {
@@ -85,7 +214,6 @@ func sendSystemTimeReq(conn net.Conn, addr string) {
 		structBuf := new(bytes.Buffer)
 		err := binary.Write(structBuf, binary.LittleEndian, data)
 		if err != nil {
-			fmt.Println("binary.Write failed:", err)
 			time.Sleep(10 * time.Second)
 			continue
 		}
@@ -93,7 +221,6 @@ func sendSystemTimeReq(conn net.Conn, addr string) {
 		buf := new(bytes.Buffer)
 		err = binary.Write(buf, binary.LittleEndian, uint16(22))
 		if err != nil {
-			fmt.Println("Failed to write length prefix:", err)
 			time.Sleep(10 * time.Second)
 			continue
 		}
@@ -101,19 +228,14 @@ func sendSystemTimeReq(conn net.Conn, addr string) {
 
 		_, err = conn.Write(buf.Bytes())
 		if err != nil {
-			fmt.Println("Error sending data:", err)
 			newConn, connErr := connectToServer(addr)
 			if connErr != nil {
-				fmt.Println("Reconnection failed:", connErr)
 				time.Sleep(10 * time.Second)
 				continue
 			}
-			fmt.Println("Reconnected to server.")
 			conn = newConn
 			system.GlobalSystem.DSConnection = conn
-			// Restart the receive loop
 			go receiveLoop(conn)
-
 		}
 
 		time.Sleep(10 * time.Second)
@@ -133,7 +255,6 @@ func receiveLoop(conn net.Conn) {
 	for {
 		n, err := conn.Read(recvBuffer[curEndPos:])
 		if err != nil {
-			fmt.Println("Error reading response:", err)
 			return
 		}
 		curEndPos += n
@@ -142,7 +263,6 @@ func receiveLoop(conn net.Conn) {
 			if curStartPos < curEndPos-2 {
 				packetLen := binary.LittleEndian.Uint16(recvBuffer[curStartPos : curStartPos+2])
 				if packetLen > MAX_OF_RECV_BUFFER {
-					fmt.Println("[RecvBuffer] Exception: Packet Length Overflow")
 					return
 				}
 				if curEndPos-curStartPos >= int(packetLen)+2 {
@@ -154,18 +274,9 @@ func receiveLoop(conn net.Conn) {
 						if msgKey == gms.MSG_KEY {
 							cMessage := packet[4]
 							if handler, ok := handlersMap[cMessage]; ok {
-								fmt.Printf("Received packet with CMessage: %d\n", cMessage)
 								handler(packet)
-								// Put this packet into a global channel, which will be split into
-
-							} else {
-								fmt.Printf("Unknown CMessage: %d\n", cMessage)
 							}
-						} else {
-							fmt.Printf("MSG_KEY mismatch: got %d, expected %d\n", msgKey, gms.MSG_KEY)
 						}
-					} else {
-						fmt.Println("Packet too short to parse MSG_KEY and CMessage")
 					}
 				} else {
 					if curStartPos != 0 {
@@ -193,40 +304,26 @@ func startWebServer() {
 		ApiRoutes.GetGameRoutes(r)
 	})
 
-	chi.Walk(r, func(method string, route string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) error {
-		fmt.Printf("[%s]: '%s' has %d middlewares\n", method, route, len(middlewares))
-		return nil
-	})
-
 	fmt.Println("Starting web server on :3000")
 	http.ListenAndServe(":3000", r)
 }
 
-// Create a middleware that checks if we have a free connection in the system.GlobalSystem.DSConnectionPool. If it doesn't have one, it'll create a new one and add it to the pool.
 func ConnectionMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Printf("Current connection pool size: %d\n", len(system.GlobalSystem.DSConnectionPool))
-
-		var conn net.Conn
+		var connWithChannel *system.ConnectionWithChannel
 		select {
-		case conn = <-system.GlobalSystem.DSConnectionPool:
-			fmt.Println("Got connection from pool")
+		case connWithChannel = <-system.GlobalSystem.DSConnectionPool:
 		default:
-			// No connection available - refuse request
-			fmt.Println("No connections available, refusing request")
 			http.Error(w, "No connections available", http.StatusServiceUnavailable)
 			return
 		}
 
-		// Pass connection in context
-		ctx := context.WithValue(r.Context(), "conn", conn)
-
-		// Return connection to pool after request
-		defer func() {
-			system.GlobalSystem.DSConnectionPool <- conn
-			fmt.Println("Returned connection to pool")
-		}()
+		ctx := context.WithValue(r.Context(), "conn", connWithChannel.Conn)
+		ctx = context.WithValue(ctx, "channel", connWithChannel.Channel)
+		ctx = context.WithValue(ctx, "connID", connWithChannel.ID)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
+
+		system.GlobalSystem.DSConnectionPool <- connWithChannel
 	})
 }

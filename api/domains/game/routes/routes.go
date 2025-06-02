@@ -15,6 +15,7 @@ func GetGameRoutes(r chi.Router) {
 				r.Use(CharacterCtx)                                               // Middleware to set player context
 				r.Post("/edit-level", GameControllers.EditLevelHandler)           // POST /characters/{characterName}/edit-level
 				r.Get("/inventory", GameControllers.GetCharacterInventoryHandler) // GET /characters/{characterName}/inventory
+
 			})
 		})
 	})
