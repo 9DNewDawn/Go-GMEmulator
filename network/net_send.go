@@ -54,16 +54,7 @@ func Send(msg interface{}, size int, conn net.Conn) int {
 
 	now := time.Now().Unix()
 	header.UITime = uint32(now) + uint32(system.GlobalSystem.GetTimeGapBetweenDSAsUint32())
-	adjustedTime := uint32(now) + system.GlobalSystem.GetTimeGapBetweenDSAsUint32()
-
-	// Add these debug lines:
-	fmt.Printf("DEBUG TIME: now=%d, gap=%d, adjusted=%d\n", now, system.GlobalSystem.GetTimeGapBetweenDS(), adjustedTime)
-	fmt.Printf("DEBUG TIME: successful UITime was 1748890605\n")
-	fmt.Printf("DEBUG TIME: difference = %d seconds\n", int64(adjustedTime)-1748890605)
-
-	adjustedTime = 1748890605 // Use the exact UITime from successful packet
-	fmt.Printf("DEBUG: Using manual UITime override: %d\n", adjustedTime)
-
+	
 	// Write updated header back to buffer
 	headerBufOut := new(bytes.Buffer)
 	err = binary.Write(headerBufOut, binary.LittleEndian, &header)
@@ -191,9 +182,6 @@ func DebugSend(msg interface{}, size int, conn net.Conn) int {
 		return -1
 	}
 	finalBuf.Write(buffer[:size])
-
-	fmt.Printf("DEBUG: Final packet length: %d\n", finalBuf.Len())
-	fmt.Printf("DEBUG: Final packet (hex): %x\n", finalBuf.Bytes())
 
 	// Encrypt if needed (same as original)
 	if header.CMessage != 0 {
