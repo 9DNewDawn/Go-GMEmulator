@@ -3,23 +3,22 @@ package ApiRoutes
 import (
 	"context"
 	GameControllersPlayer "gm-emulator/api/domains/game/controllers/player"
-	GameControllersInventory "gm-emulator/api/domains/game/controllers/player/inventory"
+	GameControllersServer "gm-emulator/api/domains/game/controllers/server"
+	// GameControllersInventory "gm-emulator/api/domains/game/controllers/player/inventory"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 )
 
 func GetGameRoutes(r chi.Router) {
-	r.Route("/game", func(r chi.Router) {
-		r.Route("/character", func(r chi.Router) {
-			r.Route("/{characterName}", func(r chi.Router) {
-				r.Use(CharacterCtx)                                                        // Middleware to set player context
-				r.Post("/edit-level", GameControllersPlayer.EditLevelHandler)              // POST /characters/{characterName}/edit-level
-				r.Get("/inventory", GameControllersInventory.GetCharacterInventoryHandler) // GET /characters/{characterName}/inventory
-				// r.Put("/inventory", GameC)
-
-			})
-		})
+	r.Route("/server", func(r chi.Router) {
+		r.Post("/edit-level", GameControllersPlayer.EditLevelHandler)              // POST /api/server/edit-level
+		r.Post("/edit-gold", GameControllersPlayer.EditGoldHandler)                // POST /api/server/edit-gold
+		r.Post("/notice", GameControllersServer.AddGameNotice)					   // POST /api/server/notice
+		r.Post("/teleport", GameControllersServer.TeleportCharacter)			   // POST /api/server/teleport
+		r.Post("/shutdown", GameControllersServer.ShutdownServer)				   // POST /api/server/shutdown
+		r.Post("/elixir", GameControllersPlayer.EditElixirHandler)				   // POST /api/server/elixir
+		r.Post("/rename", GameControllersPlayer.EditNameHandler)				   // POST /api/server/rename
 	})
 }
 
