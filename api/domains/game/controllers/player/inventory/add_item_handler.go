@@ -10,6 +10,17 @@ import (
 	"time"
 )
 
+type MSG_GM_ADD_ITEM_DTO struct {
+	CGMName      string
+	CFirstType   uint8
+	CSecondType  uint8
+	SItemID      int16
+	UCItemCount  uint8
+	USDurability uint16
+	UCSlotCount  uint8
+	UCInchant    uint8
+}
+
 func AddItem(w http.ResponseWriter, r *http.Request) {
 	conn, ok := r.Context().Value("conn").(net.Conn)
 	if !ok {
@@ -73,10 +84,9 @@ func AddItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var addItemReq gms.MSG_GM_ADD_INVITEM
-	characReqMessage.Header = gms.GmsHeader{
-		IKey:     gms.MSG_KEY,
-		CMessage: gms.MSG_CHARAC_REQ_NUM,
-		UITime:   0,
-	}
+	// var addItemDTO MSG_GM_ADD_ITEM_DTO
+	// var addItemReq gms.MSG_GM_ADD_INVITEM
+	// addItemReq.Header.IKey = gms.MSG_KEY
+	// addItemReq.Header.CMessage = gms.MSG_GM_ADD_INVITEM_NUM
+	// // editLevelMsg.ILevel = editLevelMsgDto.ILevel
 }

@@ -147,33 +147,18 @@ type MSG_CHARAC_RES struct {
 
 type MSG_GM_ADD_INVITEM struct {
 	Header       GmsHeader
-	CChrName     [13]byte
+	CCharacName  [13]byte
 	CFirstType   uint8
 	CSecondType  uint8
-	SItemID      uint16
+	SItemID      int16
 	UCItemCount  uint8
-	UCDurability uint8
+	USDurability uint16
 	UCSlotCount  uint8
 	UCInchant    uint8
+	// Conditional fields for _PD_GM_ADDITEM_MODIFY_
+	// CCashCheck   int8   // Use int8 for char
+	// USTimeValue  uint16 // Use uint16 for u_short
 }
-
-// struct MSG_GM_ADD_INVITEM
-// {
-// 	_gmsHeader	header;
-// 	char				cCharacName[13];			//UniqueUserID
-// 	char				cFirstType;
-// 	char				cSecondType;
-// 	short				sItemID;
-// 	unsigned char		ucItemCount;
-// 	unsigned short		usDurability;
-// 	unsigned char		ucSlotCount;			//아이템에 슬롯이 있는 경우 사용
-// 	unsigned char		ucInchant;					//아이템의 제련값
-
-// #ifdef _PD_GM_ADDITEM_MODIFY_
-// 	char				cCashCheck;				// 기간제 아이템 삽입을 위해 변경.
-// 	u_short				usTimeValue;			// 기간제 아이템 삽입을 위해 변경.
-// #endif
-// };
 
 const MSG_KEY = 1003
 const MSG_SYSTEM_TIME_REQ_NUM = 11
