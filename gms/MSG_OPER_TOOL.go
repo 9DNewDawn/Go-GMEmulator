@@ -160,15 +160,55 @@ type MSG_GM_ADD_INVITEM struct {
 	// USTimeValue  uint16 // Use uint16 for u_short
 }
 
+type MSG_MESSAGE_DIRECT struct {
+	Header      GmsHeader
+	CServerNum  int8
+	CString     [40]byte
+}
+
+type MSG_GM_EDIT_ZONE struct {
+	Header      GmsHeader
+	CCharacName [13]byte
+	IZone       int32
+	FX          float32
+    FZ          float32
+}
+
+type MSG_SYSTEM_OFF_REQ struct {
+	Header      GmsHeader
+	CServer_num int8
+}
+
+type MSG_GM_EDIT_ELIXIR struct {
+	Header      GmsHeader
+	CCharacName [13]byte
+	CElixirType byte		//0 = str
+	CGrade      byte		//count of asData
+	ASData		[10]int16	//each level of elix
+}
+
+type MSG_GM_EDIT_NAME struct {
+	Header      GmsHeader
+	CCharacName [13]byte
+	Name        [13]byte
+}
+
 const MSG_KEY = 1003
+const MSG_MESSAGE_DIRECT_NUM = 9
+const MSG_SYSTEM_OFF_REQ_NUM = 10
 const MSG_SYSTEM_TIME_REQ_NUM = 11
 const MSG_SYSTEM_TIME_RES_NUM = 12
 const MSG_GM_ADD_INVGOLD_NUM = 77
 const MSG_GM_EDIT_LEVEL_NUM = 61
 const MSG_GM_EDIT_VITAL_NUM = 62
+const MSG_GM_EDIT_ZONE_NUM = 68
 const MSG_GM_EDIT_GMCLASS_NUM = 70
+const MSG_GM_EDIT_NAME_NUM = 71
+const MSG_GM_ADD_INVITEM_NUM = 73
 const MSG_INVEN_REQ_NUM = 46
 const MSG_INVEN_RES_NUM = 47
 const MSG_CHARAC_REQ_NUM = 41
 const MSG_CHARAC_RES_NUM = 42
-const MSG_GM_ADD_INVITEM_NUM = 73
+const MSG_GM_EDIT_ELIXIR_NUM = 99
+
+
